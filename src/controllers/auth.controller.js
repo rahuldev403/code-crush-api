@@ -1,7 +1,7 @@
 import User from "../models/user.model.js";
 import bcrypt from "bcrypt";
 import jwt from "jsonwebtoken";
-import validator from "validator"
+import validator from "validator";
 
 const generateAccessToken = (userId) => {
   return jwt.sign({ userId }, process.env.JWT_ACCESS_SECRET, {
@@ -31,11 +31,12 @@ export const refresh = async (req, res) => {
       });
     }
     const newAccessToken = generateAccessToken(user._id);
+    const isProduction = process.env.NODE_ENV === "production";
     res
       .cookie("accessToken", newAccessToken, {
         httpOnly: true,
-        secure: false,
-        sameSite: "strict",
+        secure: isProduction,
+        sameSite: isProduction ? "none" : "strict",
         maxAge: 15 * 60 * 1000,
       })
       .status(200)
@@ -79,18 +80,19 @@ export const register = async (req, res) => {
     newUser.refreshToken = refreshToken;
     await newUser.save();
 
+    const isProduction = process.env.NODE_ENV === "production";
     //sending the success message with the new user deatils not the password
     res
       .cookie("accessToken", accessToken, {
         httpOnly: true,
-        secure: false,
-        sameSite: "strict",
+        secure: isProduction,
+        sameSite: isProduction ? "none" : "strict",
         maxAge: 15 * 60 * 1000,
       })
       .cookie("refreshToken", refreshToken, {
         httpOnly: true,
-        secure: false,
-        sameSite: "strict",
+        secure: isProduction,
+        sameSite: isProduction ? "none" : "strict",
         maxAge: 7 * 24 * 60 * 60 * 1000,
       })
       .status(201)
@@ -142,17 +144,18 @@ export const login = async (req, res) => {
     const refreshToken = generateRefreshToken(user._id);
     user.refreshToken = refreshToken;
     await user.save();
+    const isProduction = process.env.NODE_ENV === "production";
     res
       .cookie("accessToken", accessToken, {
         httpOnly: true,
-        secure: false,
-        sameSite: "strict",
+        secure: isProduction,
+        sameSite: isProduction ? "none" : "strict",
         maxAge: 15 * 60 * 1000,
       })
       .cookie("refreshToken", refreshToken, {
         httpOnly: true,
-        secure: false,
-        sameSite: "strict",
+        secure: isProduction,
+        sameSite: isProduction ? "none" : "strict",
         maxAge: 7 * 24 * 60 * 60 * 1000,
       })
       .status(200)
