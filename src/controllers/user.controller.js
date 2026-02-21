@@ -61,13 +61,37 @@ export const getMe = async (req, res) => {
     let githubData = null;
 
     if (user.githubLink) {
-      const username = user.githubLink.split("github.com/")[1];
+      const username = user.githubLink.split("github.com/")[1]?.split("/")[0];
 
       if (username) {
-        const response = await fetch(
-          `https://api.github.com/users/${username}`,
-        );
-        githubData = await response.json();
+        try {
+          const headers = {
+            Accept: "application/vnd.github.v3+json",
+          };
+
+          // Add authentication if token is available
+          if (process.env.GITHUB_TOKEN) {
+            headers.Authorization = `Bearer ${process.env.GITHUB_TOKEN}`;
+          }
+
+          const response = await fetch(
+            `https://api.github.com/users/${username}`,
+            { headers },
+          );
+
+          if (response.ok) {
+            githubData = await response.json();
+          } else {
+            console.error(
+              `GitHub API error for ${username}:`,
+              response.status,
+              response.statusText,
+            );
+          }
+        } catch (githubError) {
+          console.error("Failed to fetch GitHub data:", githubError.message);
+          // Continue without github data rather than failing the entire request
+        }
       }
     }
     res.status(200).json({
@@ -225,14 +249,28 @@ export const getFeed = async (req, res) => {
 
           if (username) {
             try {
+              const headers = {
+                Accept: "application/vnd.github.v3+json",
+              };
+
+              if (process.env.GITHUB_TOKEN) {
+                headers.Authorization = `Bearer ${process.env.GITHUB_TOKEN}`;
+              }
+
               const response = await fetch(
                 `https://api.github.com/users/${username}`,
+                { headers },
               );
               if (response.ok) {
                 userObj.githubData = await response.json();
+              } else {
+                console.error(
+                  `GitHub API error for ${username}:`,
+                  response.status,
+                );
               }
             } catch (error) {
-              
+              console.error("Failed to fetch GitHub data:", error.message);
             }
           }
         }
