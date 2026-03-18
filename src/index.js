@@ -6,6 +6,7 @@ import cookieParser from "cookie-parser";
 import authRouter from "./routes/auth.route.js";
 import userRoute from "./routes/user.route.js";
 import messageRouter from "./routes/message.route.js";
+import githubRouter from "./routes/github.route.js";
 import http from "http";
 import { Server } from "socket.io";
 import { chatSocket } from "./sockets/chatSocket.js";
@@ -47,6 +48,7 @@ const port = process.env.PORT || 8000;
 app.use("/api/auth", authRouter);
 app.use("/api/user", userRoute);
 app.use("/api/messages", messageRouter);
+app.use("/api/github", githubRouter);
 app.use(notFound);
 app.use(errorHandler);
 

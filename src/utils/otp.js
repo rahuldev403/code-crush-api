@@ -5,7 +5,11 @@ export const generateOTP = () => {
 };
 
 export const hashOTP = (OTP) => {
-  return crypto.hash("sha256").update(OTP).digest("hex");
+  if (OTP === undefined || OTP === null || OTP === "") {
+    throw new Error("OTP is required for hashing");
+  }
+
+  return crypto.createHash("sha256").update(String(OTP)).digest("hex");
 };
 
 export const verifyOTP = (inputOTP, hashedOTP) => {

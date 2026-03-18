@@ -449,3 +449,42 @@ export const getSentRequests = asyncHandler(async (req, res) => {
     ),
   );
 });
+
+export const removeConnection = asyncHandler(async (req, res) => {
+  const { matchId } = req.params;
+
+  if (!matchId) {
+    throw new ApiError(400, "Match ID is required");
+  }
+
+  const match = await Match.findById(matchId);
+
+  if (!match) {
+    throw new ApiError(404, "Match not found");
+  }
+
+  // Verify user is part of this match
+  if (!match.users.includes(req.userId)) {
+    throw new ApiError(403, "Not authorized to remove this connection");
+  }
+
+  const io = getIO();
+  const otherUserId = match.users.find(
+    (user) => user.toString() !== req.userId,
+  );
+
+  // Emit disconnect event to other user
+  if (otherUserId) {
+    io.to(otherUserId.toString()).emit("connection-removed", {
+      matchId: match._id.toString(),
+      byUser: req.userId,
+    });
+  }
+
+  // Delete the match
+  await Match.findByIdAndDelete(matchId);
+
+  return res
+    .status(200)
+    .json(new ApiResponse(200, null, "Connection removed successfully"));
+});

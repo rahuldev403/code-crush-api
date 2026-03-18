@@ -1,11 +1,83 @@
 import { OpenAI } from "openai";
 
-const client = new OpenAI({
-  apiKey: process.env.MISTRAL_API_KEY,
-  baseURL: "https://api.mistral.ai/v1",
-});
+const getAiClient = () => {
+  const apiKey = process.env.MISTRAL_API_KEY || process.env.OPENAI_API_KEY;
+
+  if (!apiKey) {
+    return null;
+  }
+
+  return new OpenAI({
+    apiKey,
+    baseURL: "https://api.mistral.ai/v1",
+  });
+};
+
+const normalize = (value) =>
+  String(value || "")
+    .trim()
+    .toLowerCase();
+
+const normalizeSkills = (skills = []) =>
+  new Set(skills.map((skill) => normalize(skill)).filter(Boolean));
+
+const getExperienceScore = (levelA, levelB) => {
+  const rank = { beginner: 1, intermediate: 2, advanced: 3 };
+  const scoreA = rank[normalize(levelA)] || 0;
+  const scoreB = rank[normalize(levelB)] || 0;
+  const diff = Math.abs(scoreA - scoreB);
+
+  if (diff === 0) return 100;
+  if (diff === 1) return 75;
+  if (diff === 2) return 50;
+  return 60;
+};
+
+const buildFallbackCompatibility = (userA, userB) => {
+  const skillsA = normalizeSkills(userA?.skills);
+  const skillsB = normalizeSkills(userB?.skills);
+
+  const commonSkills = [...skillsA].filter((skill) => skillsB.has(skill));
+  const uniqueSkills = new Set([...skillsA, ...skillsB]).size;
+  const skillScore = uniqueSkills
+    ? Math.round((commonSkills.length / uniqueSkills) * 100)
+    : 50;
+
+  const expScore = getExperienceScore(
+    userA?.experienceLevel,
+    userB?.experienceLevel,
+  );
+
+  const availabilityScore =
+    normalize(userA?.availability) === normalize(userB?.availability)
+      ? 100
+      : 70;
+
+  const finalScore = Math.max(
+    0,
+    Math.min(
+      100,
+      Math.round(skillScore * 0.6 + expScore * 0.25 + availabilityScore * 0.15),
+    ),
+  );
+
+  const summary = commonSkills.length
+    ? `Strong overlap in ${commonSkills.slice(0, 3).join(", ")}. Local estimate used because AI provider is not configured.`
+    : "Limited direct skill overlap. Local estimate used because AI provider is not configured.";
+
+  return {
+    score: finalScore,
+    summary,
+  };
+};
 
 const generateCompatibility = async (userA, userB) => {
+  const client = getAiClient();
+
+  if (!client) {
+    return buildFallbackCompatibility(userA, userB);
+  }
+
   const prompt = `
     You are a team compatibility evaluator.
 

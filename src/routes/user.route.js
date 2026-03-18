@@ -10,6 +10,7 @@ import {
   swipeUser,
   updatePassword,
   updateProfile,
+  removeConnection,
 } from "../controllers/user.controller.js";
 import { protect } from "../middlewares/authMiddleware.js";
 import rateLimit from "express-rate-limit";
@@ -29,6 +30,7 @@ userRoute.get("/avatar/signature", protect, getAvatarUploadSignature);
 userRoute.get("/feed", protect, getFeed);
 userRoute.post("/swipe", protect, swipeLimiter, swipeUser);
 userRoute.get("/matches", protect, getMyMatches);
+userRoute.delete("/matches/:matchId", protect, removeConnection);
 userRoute.get("/requests", protect, getReceivedRequests);
 userRoute.get("/sentrequests", protect, getSentRequests);
 userRoute.patch("/response", protect, respondToRequest);

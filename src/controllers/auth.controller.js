@@ -228,18 +228,25 @@ export const resendOTP = asyncHandler(async (req, res) => {
 
 export const login = asyncHandler(async (req, res) => {
   const { email, password } = req.body;
+  const normalizedEmail = String(email || "")
+    .trim()
+    .toLowerCase();
 
   if (!email || !password) {
     throw new ApiError(400, "Email and password are required");
   }
 
-  if (!validator.isEmail(email)) {
+  if (!validator.isEmail(normalizedEmail)) {
     throw new ApiError(400, "Invalid email format");
   }
 
-  const user = await User.findOne({ email });
+  const user = await User.findOne({ email: normalizedEmail });
   if (!user) {
     throw new ApiError(400, "Invalid credentials");
+  }
+
+  if (!user.isVerified) {
+    throw new ApiError(403, "Please verify your email with OTP before login");
   }
 
   const isMatch = await bcrypt.compare(password, user.password);
@@ -303,7 +310,7 @@ export const forgotPassword = asyncHandler(async (req, res) => {
       );
   }
   const otp = generateOTP();
-  const hashedOTP = hashOtp(otp);
+  const hashedOTP = hashOTP(otp);
 
   await OTP.deleteMany({ email: normalizedEmail, purpose: "password-reset" });
 
@@ -313,7 +320,7 @@ export const forgotPassword = asyncHandler(async (req, res) => {
     purpose: "password-reset",
   });
 
-  await sendOtpEmail(normalizedEmail, otp, "password-reset");
+  await sendOTPEmail(normalizedEmail, otp, "password-reset");
 
   return res
     .status(200)
