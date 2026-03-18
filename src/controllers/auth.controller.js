@@ -1,10 +1,13 @@
 import User from "../models/user.model.js";
+import OTP from "../models/otp.model.js";
 import bcrypt from "bcrypt";
 import jwt from "jsonwebtoken";
 import validator from "validator";
 import ApiError from "../utils/ApiError.js";
 import ApiResponse from "../utils/ApiResponse.js";
 import asyncHandler from "../utils/asyncHandler.js";
+import { generateOTP, hashOTP, verifyOTP } from "../utils/otp.js";
+import { sendOTPEmail } from "../services/email.service.js";
 
 const generateAccessToken = (userId) => {
   return jwt.sign({ userId }, process.env.JWT_ACCESS_SECRET, {
@@ -58,55 +61,165 @@ export const refresh = asyncHandler(async (req, res) => {
 
 export const register = asyncHandler(async (req, res) => {
   const { name, email, password } = req.body;
+  const normalizedEmail = String(email || "").trim().toLowerCase();
 
   if (!name || !email || !password) {
     throw new ApiError(400, "All fields are required");
   }
 
-  if (!validator.isEmail(email)) {
+  if (!validator.isEmail(normalizedEmail)) {
     throw new ApiError(400, "Invalid email format");
   }
 
-  const existingUser = await User.findOne({ email });
+  const existingUser = await User.findOne({ email: normalizedEmail });
+
+  const otp = generateOTP();
+  const hashedOtp = hashOTP(otp);
+
+  const salt = await bcrypt.genSalt(10);
+  const hashedPassword = await bcrypt.hash(password, salt);
+
+  let user;
   if (existingUser) {
-    throw new ApiError(400, "User already exists");
+    if (existingUser.isVerified) {
+      throw new ApiError(
+        409,
+        "An account with this email already exists. Please sign in.",
+      );
+    }
+    user = existingUser;
+    user.name = name;
+    user.password = hashedPassword;
+    await user.save();
+  } else {
+    user = await User.create({
+      name,
+      email: normalizedEmail,
+      password: hashedPassword,
+      isVerified: false,
+    });
   }
 
-  const hashedPassword = await bcrypt.hash(password, 10);
-  const newUser = await User.create({
-    name,
-    email,
-    password: hashedPassword,
+  await OTP.deleteMany({ email: normalizedEmail, purpose: "signup" });
+  await OTP.create({
+    email: normalizedEmail,
+    otp: hashedOtp,
+    purpose: "signup",
   });
-
-  const accessToken = generateAccessToken(newUser._id);
-  const refreshToken = generateRefreshToken(newUser._id);
-  newUser.refreshToken = refreshToken;
-  await newUser.save();
+  await sendOTPEmail(normalizedEmail, otp, "signup");
 
   return res
-    .cookie("accessToken", accessToken, {
-      ...getCookieOptions(),
-      maxAge: 15 * 60 * 1000,
-    })
-    .cookie("refreshToken", refreshToken, {
-      ...getCookieOptions(),
-      maxAge: 7 * 24 * 60 * 60 * 1000,
-    })
-    .status(201)
+    .status(200)
     .json(
       new ApiResponse(
-        201,
-        {
-          user: {
-            id: newUser._id,
-            name: newUser.name,
-            email: newUser.email,
-          },
-        },
-        "User registered successfully",
+        200,
+        { email: normalizedEmail },
+        "OTP sent to your email. Please verify to complete registration.",
       ),
     );
+});
+
+export const verifyRegistrationOTP = asyncHandler(async (req, res) => {
+  const { email, otp } = req.body;
+  const normalizedEmail = String(email || "").trim().toLowerCase();
+
+  if (!email || !otp) {
+    throw new ApiError(400, "Email and OTP are required");
+  }
+
+  const user = await User.findOne({ email: normalizedEmail });
+  if (!user) {
+    throw new ApiError(404, "User not found");
+  }
+  if (user.isVerified) {
+    throw new ApiError(400, "User already verified");
+  }
+
+  const otpRecord = await OTP.findOne({
+    email: normalizedEmail,
+    purpose: "signup",
+  });
+
+  if (!otpRecord) {
+    throw new ApiError(
+      400,
+      "OTP has expired or not requested. Please request a new one.",
+    );
+  }
+
+  if (otpRecord.attempts >= 5) {
+    await OTP.deleteOne({ _id: otpRecord._id });
+    throw new ApiError(
+      429,
+      "Too many failed attempts. Please request a new OTP.",
+    );
+  }
+
+  if (!verifyOTP(otp, otpRecord.otp)) {
+    otpRecord.attempts += 1;
+    await otpRecord.save();
+    throw new ApiError(
+      400,
+      `Invalid OTP. ${5 - otpRecord.attempts} attempts remaining.`,
+    );
+  }
+
+  user.isVerified = true;
+
+  const accessToken = generateAccessToken(user._id);
+  const refreshToken = generateRefreshToken(user._id);
+  user.refreshToken = refreshToken;
+  await user.save();
+
+  await OTP.deleteOne({ _id: otpRecord._id });
+
+  const cookieOptions = getCookieOptions();
+  const accessTokenOptions = {
+    ...cookieOptions,
+    maxAge: 15 * 60 * 1000,
+  };
+  const refreshTokenCookieOptions = {
+    ...cookieOptions,
+    maxAge: 7 * 24 * 60 * 60 * 1000,
+  };
+  const safeUser = user.toObject();
+  delete safeUser.password;
+  delete safeUser.refreshToken;
+
+  return res
+    .status(200)
+    .cookie("accessToken", accessToken, accessTokenOptions)
+    .cookie("refreshToken", refreshToken, refreshTokenCookieOptions)
+    .json(new ApiResponse(200, safeUser, "Registration successful!"));
+});
+
+export const resendOTP = asyncHandler(async (req, res) => {
+  const { email, purpose } = req.body;
+  const normalizedEmail = String(email || "")
+    .trim()
+    .toLowerCase();
+
+  const user = await User.findOne({ email: normalizedEmail });
+  if (!user) {
+    throw new ApiError(404, "User not found");
+  }
+
+  const otp = generateOTP();
+  const hashedOTP = hashOTP(otp);
+
+  await OTP.deleteMany({ email: normalizedEmail, purpose });
+
+  await OTP.create({
+    email: normalizedEmail,
+    otp: hashedOTP,
+    purpose,
+  });
+
+  await sendOTPEmail(normalizedEmail, otp, purpose);
+
+  return res
+    .status(200)
+    .json(new ApiResponse(200, null, "OTP sent successfully"));
 });
 
 export const login = asyncHandler(async (req, res) => {
@@ -160,6 +273,123 @@ export const login = asyncHandler(async (req, res) => {
     );
 });
 
+export const forgotPassword = asyncHandler(async (req, res) => {
+  const { email } = req.body;
+  const normalizedEmail = String(email || "")
+    .trim()
+    .toLowerCase();
+
+  if (!email) {
+    throw new ApiError(400, "Email is required");
+  }
+
+  if (!validator.isEmail(normalizedEmail)) {
+    throw new ApiError(400, "Invalid email format");
+  }
+  const user = await User.findOne({ email: normalizedEmail });
+  if (!user) {
+    return res
+      .status(200)
+      .json(
+        new ApiResponse(
+          200,
+          null,
+          "If an account exists with this email, you will receive a password reset code.",
+        ),
+      );
+  }
+  const otp = generateOTP();
+  const hashedOTP = hashOtp(otp);
+
+  await OTP.deleteMany({ email: normalizedEmail, purpose: "password-reset" });
+
+  await OTP.create({
+    email: normalizedEmail,
+    otp: hashedOTP,
+    purpose: "password-reset",
+  });
+
+  await sendOtpEmail(normalizedEmail, otp, "password-reset");
+
+  return res
+    .status(200)
+    .json(
+      new ApiResponse(
+        200,
+        null,
+        "If an account exists with this email, you will receive a password reset code.",
+      ),
+    );
+});
+
+export const resetPassword = asyncHandler(async (req, res) => {
+  const { email, otp, newPassword } = req.body;
+  const normalizedEmail = String(email || "")
+    .trim()
+    .toLowerCase();
+
+  if (!email || !otp || !newPassword) {
+    throw new ApiError(400, "Email, OTP, and new password are required");
+  }
+
+  if (!validator.isStrongPassword(newPassword)) {
+    throw new ApiError(400, "Password is not strong enough");
+  }
+  const user = await User.findOne({ email: normalizedEmail });
+  const otpRecord = await OTP.findOne({
+    email: normalizedEmail,
+    purpose: "password-reset",
+  });
+
+  if (!user || !otpRecord) {
+    throw new ApiError(404, "Invalid request");
+  }
+  if (otpRecord.attempts >= 5) {
+    await OTP.deleteOne({ _id: otpRecord._id });
+    throw new ApiError(
+      429,
+      "Too many failed attempts. Please request a new password reset.",
+    );
+  }
+
+  const otpAgeMs = Date.now() - new Date(otpRecord.createdAt).getTime();
+  if (otpAgeMs > 10 * 60 * 1000) {
+    await OTP.deleteOne({ _id: otpRecord._id });
+    throw new ApiError(
+      400,
+      "OTP has expired. Please request a new password reset.",
+    );
+  }
+
+  if (!verifyOTP(otp, otpRecord.otp)) {
+    otpRecord.attempts += 1;
+    await otpRecord.save();
+    throw new ApiError(
+      400,
+      `Invalid OTP. ${5 - otpRecord.attempts} attempts remaining.`,
+    );
+  }
+
+  const salt = await bcrypt.genSalt(10);
+  const hashedNewPassword = await bcrypt.hash(newPassword, salt);
+
+  user.password = hashedNewPassword;
+  user.refreshToken = undefined;
+  await user.save();
+
+  await OTP.deleteOne({ _id: otpRecord._id });
+
+  return res
+    .status(200)
+    .json(
+      new ApiResponse(
+        200,
+        null,
+        "Password reset successful! Please login with your new password.",
+      ),
+    );
+});
+
 export const logout = asyncHandler(async (req, res) => {
   const refreshToken = req.cookies.refreshToken;
 
@@ -171,9 +401,7 @@ export const logout = asyncHandler(async (req, res) => {
           refreshToken: null,
         });
       }
-    } catch {
-      // Logout should not fail due to an invalid/expired refresh token.
-    }
+    } catch {}
   }
 
   return res
@@ -182,9 +410,3 @@ export const logout = asyncHandler(async (req, res) => {
     .status(200)
     .json(new ApiResponse(200, null, "Logged out successfully"));
 });
-
-//? decoded - {
-//?   userId: "65f1a9d0a2c3...",
-//?   iat: 1712345678, these are assigned by jwt
-//?   exp: 1712346578 these are assigned by jwt
-//? }

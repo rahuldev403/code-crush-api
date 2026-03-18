@@ -76,6 +76,10 @@ const userSchema = new mongoose.Schema(
       default:
         "https://i.pinimg.com/474x/c0/84/76/c08476bddd9b396d5519e92a251c5875.jpg",
     },
+    isVerified: {
+      type: Boolean,
+      default: false,
+    },
   },
   { timestamps: true },
 );
