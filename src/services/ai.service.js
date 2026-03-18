@@ -1,7 +1,7 @@
 import { OpenAI } from "openai";
 
 const client = new OpenAI({
-  apiKey: process.env.MISTRAL_API_KEY || "kJOl2Ucav5AZzjNlXgkduVvfbYPhxDnj",
+  apiKey: process.env.MISTRAL_API_KEY,
   baseURL: "https://api.mistral.ai/v1",
 });
 
