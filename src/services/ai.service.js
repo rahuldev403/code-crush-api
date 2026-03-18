@@ -1,7 +1,7 @@
 import { OpenAI } from "openai";
 
 const getAiClient = () => {
-  const apiKey = process.env.MISTRAL_API_KEY || process.env.OPENAI_API_KEY;
+  const apiKey = process.env.MISTRAL_API_KEY ;
 
   if (!apiKey) {
     return null;
