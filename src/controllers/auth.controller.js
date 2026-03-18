@@ -61,7 +61,9 @@ export const refresh = asyncHandler(async (req, res) => {
 
 export const register = asyncHandler(async (req, res) => {
   const { name, email, password } = req.body;
-  const normalizedEmail = String(email || "").trim().toLowerCase();
+  const normalizedEmail = String(email || "")
+    .trim()
+    .toLowerCase();
 
   if (!name || !email || !password) {
     throw new ApiError(400, "All fields are required");
@@ -121,7 +123,9 @@ export const register = asyncHandler(async (req, res) => {
 
 export const verifyRegistrationOTP = asyncHandler(async (req, res) => {
   const { email, otp } = req.body;
-  const normalizedEmail = String(email || "").trim().toLowerCase();
+  const normalizedEmail = String(email || "")
+    .trim()
+    .toLowerCase();
 
   if (!email || !otp) {
     throw new ApiError(400, "Email and OTP are required");
