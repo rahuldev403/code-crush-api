@@ -1,19 +1,18 @@
 import jwt from "jsonwebtoken";
+import ApiError from "../utils/ApiError.js";
+import asyncHandler from "../utils/asyncHandler.js";
 
-export const protect = (req, res, next) => {
+export const protect = asyncHandler(async (req, _res, next) => {
+  const token = req.cookies.accessToken;
+  if (!token) {
+    throw new ApiError(401, "Not authorized, no token");
+  }
+
   try {
-    const token = req.cookies.accessToken;
-    if (!token) {
-      return res.status(401).json({
-        message: "Not authorized, no token",
-      });
-    }
     const decoded = jwt.verify(token, process.env.JWT_ACCESS_SECRET);
     req.userId = decoded.userId;
     next();
-  } catch (error) {
-    return res.status(401).json({
-      message: "Invalid or expired token",
-    });
+  } catch {
+    throw new ApiError(401, "Invalid or expired token");
   }
-};
+});

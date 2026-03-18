@@ -1,19 +1,8 @@
 import { OpenAI } from "openai";
 
-const azureEndpoint = (process.env.AZURE_OPENAI_ENDPOINT || "").replace(
-  /\/+$/,
-  "",
-);
-
 const client = new OpenAI({
-  apiKey: process.env.AZURE_OPENAI_API_KEY,
-  baseURL: `${azureEndpoint}/openai/deployments/${process.env.AZURE_OPENAI_DEPLOYMENT_NAME}`,
-  defaultQuery: {
-    "api-version": process.env.AZURE_OPENAI_API_VERSION,
-  },
-  defaultHeaders: {
-    "api-key": process.env.AZURE_OPENAI_API_KEY,
-  },
+  apiKey: process.env.MISTRAL_API_KEY || "kJOl2Ucav5AZzjNlXgkduVvfbYPhxDnj",
+  baseURL: "https://api.mistral.ai/v1",
 });
 
 const generateCompatibility = async (userA, userB) => {
@@ -43,15 +32,22 @@ const generateCompatibility = async (userA, userB) => {
 `;
 
   const response = await client.chat.completions.create({
+    model: process.env.MISTRAL_MODEL || "mistral-small-latest",
     messages: [
       { role: "system", content: "You respond only in valid JSON." },
       { role: "user", content: prompt },
     ],
+    temperature: 0.2,
   });
 
-  const content = response.choices[0].message.content;
+  const content = response.choices[0]?.message?.content || "{}";
+  const normalized = content
+    .replace(/^```json\s*/i, "")
+    .replace(/^```\s*/i, "")
+    .replace(/\s*```$/, "")
+    .trim();
 
-  return JSON.parse(content);
+  return JSON.parse(normalized);
 };
 
 // Fire-and-forget: Generate compatibility without blocking response

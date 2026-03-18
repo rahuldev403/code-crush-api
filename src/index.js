@@ -11,6 +11,7 @@ import { Server } from "socket.io";
 import { chatSocket } from "./sockets/chatSocket.js";
 import { setIO } from "./socket.js";
 import rateLimit from "express-rate-limit";
+import { errorHandler, notFound } from "./middlewares/error.middleware.js";
 
 const globalLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
@@ -41,11 +42,13 @@ const io = new Server(server, {
 });
 setIO(io);
 chatSocket(io);
-const port = 8000 || process.env.PORT;
+const port = process.env.PORT || 8000;
 
 app.use("/api/auth", authRouter);
 app.use("/api/user", userRoute);
 app.use("/api/messages", messageRouter);
+app.use(notFound);
+app.use(errorHandler);
 
 server.listen(port, () => {
   console.log(`serever is running on port: http://localhost:${port}`);
