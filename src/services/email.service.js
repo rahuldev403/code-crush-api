@@ -1,6 +1,30 @@
 import nodemailer from "nodemailer";
 import ApiError from "../utils/ApiError.js";
 
+const mapEmailError = (error) => {
+  const code = error?.code;
+  const responseCode = error?.responseCode;
+
+  if (code === "EAUTH" || responseCode === 535) {
+    return new ApiError(
+      503,
+      "Email authentication failed. Please verify EMAIL_USER and Gmail App Password.",
+    );
+  }
+
+  if (code === "ETIMEDOUT" || code === "ESOCKET") {
+    return new ApiError(
+      503,
+      "Email provider timeout. Please try again in a moment.",
+    );
+  }
+
+  return new ApiError(
+    502,
+    "Unable to send OTP email right now. Please try again in a moment.",
+  );
+};
+
 const getTransporter = () => {
   const emailUser = process.env.EMAIL_USER;
   const emailPassword = process.env.EMAIL_PASSWORD;
@@ -52,9 +76,13 @@ export const sendOTPEmail = async (email, OTP, purpose) => {
       throw error;
     }
 
-    throw new ApiError(
-      502,
-      "Unable to send OTP email right now. Please try again in a moment.",
-    );
+    console.error("Email send failure", {
+      code: error?.code,
+      responseCode: error?.responseCode,
+      command: error?.command,
+      message: error?.message,
+    });
+
+    throw mapEmailError(error);
   }
 };
