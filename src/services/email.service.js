@@ -2,6 +2,8 @@ import axios from "axios";
 import nodemailer from "nodemailer";
 import ApiError from "../utils/ApiError.js";
 
+const DEFAULT_RESEND_FROM = "onboarding@resend.dev";
+
 const getEnv = (key) =>
   String(process.env[key] || "")
     .trim()
@@ -16,6 +18,13 @@ const mapEmailError = (error, provider) => {
     return new ApiError(
       503,
       "Email authentication failed. Please verify RESEND_API_KEY and EMAIL_FROM.",
+    );
+  }
+
+  if (provider === "resend" && statusCode === 422) {
+    return new ApiError(
+      503,
+      "Resend rejected the sender address. Please verify EMAIL_FROM in your Resend dashboard.",
     );
   }
 
@@ -75,12 +84,12 @@ const getTransporter = () => {
 
 const sendViaResend = async (mailOptions) => {
   const resendApiKey = getEnv("RESEND_API_KEY");
-  const fromAddress = getEnv("EMAIL_FROM");
+  const fromAddress = getEnv("EMAIL_FROM") || DEFAULT_RESEND_FROM;
 
-  if (!resendApiKey || !fromAddress) {
+  if (!resendApiKey) {
     throw new ApiError(
       503,
-      "Resend is not configured. Please set RESEND_API_KEY and EMAIL_FROM.",
+      "Resend is not configured. Please set RESEND_API_KEY.",
     );
   }
 
