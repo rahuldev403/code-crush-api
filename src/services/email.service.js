@@ -1,12 +1,25 @@
 import nodemailer from "nodemailer";
+import ApiError from "../utils/ApiError.js";
 
-const transporter = nodemailer.createTransport({
-  service: "gmail",
-  auth: {
-    user: process.env.EMAIL_USER,
-    pass: process.env.EMAIL_PASSWORD,
-  },
-});
+const getTransporter = () => {
+  const emailUser = process.env.EMAIL_USER;
+  const emailPassword = process.env.EMAIL_PASSWORD;
+
+  if (!emailUser || !emailPassword) {
+    throw new ApiError(
+      503,
+      "Email service is not configured. Please set EMAIL_USER and EMAIL_PASSWORD.",
+    );
+  }
+
+  return nodemailer.createTransport({
+    service: "gmail",
+    auth: {
+      user: emailUser,
+      pass: emailPassword,
+    },
+  });
+};
 
 export const sendOTPEmail = async (email, OTP, purpose) => {
   const subject = {
@@ -30,5 +43,18 @@ export const sendOTPEmail = async (email, OTP, purpose) => {
       <p>If you didn't request this, please ignore this email.</p>
     `,
   };
-  await transporter.sendMail(mailOptions);
+
+  try {
+    const transporter = getTransporter();
+    await transporter.sendMail(mailOptions);
+  } catch (error) {
+    if (error instanceof ApiError) {
+      throw error;
+    }
+
+    throw new ApiError(
+      502,
+      "Unable to send OTP email right now. Please try again in a moment.",
+    );
+  }
 };
